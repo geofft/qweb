@@ -2,7 +2,7 @@
 
 """ Ajaxterm """
 
-import array,cgi,fcntl,glob,mimetypes,optparse,os,pty,random,re,signal,select,sys,threading,time,termios,struct,pwd
+import array,cgi,fcntl,glob,mimetypes,optparse,os,random,re,signal,select,sys,threading,time,termios,struct,pwd
 
 os.chdir(os.path.normpath(os.path.dirname(__file__)))
 # Optional: Add QWeb in sys path
@@ -380,8 +380,14 @@ class Multiplex:
 			setattr(self,name,SynchronizedMethod(self.lock,orig))
 		self.thread.start()
 	def create(self,w=80,h=25):
-		pid,fd=pty.fork()
+		(fd, childfd) = socket.socketpair()
+		pid = os.fork()
 		if pid==0:
+			os.dup2(childfd, 0)
+			os.dup2(childfd, 1)
+			os.dup2(childfd, 2)
+			os.close(childfd)
+			os.close(fd)
 			try:
 				fdl=[int(i) for i in os.listdir('/proc/self/fd')]
 			except OSError:
@@ -414,8 +420,6 @@ class Multiplex:
 			os.execvpe(cmd[0],cmd,env)
 		else:
 			fcntl.fcntl(fd, fcntl.F_SETFL, os.O_NONBLOCK)
-			# python bug http://python.org/sf/1112949 on amd64
-			fcntl.ioctl(fd, struct.unpack('i',struct.pack('I',termios.TIOCSWINSZ))[0], struct.pack("HHHH",h,w,0,0))
 			self.proc[fd]={'pid':pid,'term':Terminal(w,h),'buf':'','time':time.time()}
 			return fd
 	def die(self):
